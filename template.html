@@ -1,0 +1,43 @@
+<div class="inline-drawer">
+    <div class="inline-drawer-toggle inline-drawer-header">
+        <b>Word Filter</b>
+        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+    </div>
+    <div class="inline-drawer-content" id="word-filter-settings">
+
+        <!-- Enable toggle -->
+        <div class="wf-toggle-row">
+            <label for="wf-enabled">활성화</label>
+            <input type="checkbox" id="wf-enabled" />
+        </div>
+
+        <hr class="wf-hr" />
+
+        <!-- Delete Section -->
+        <div class="wf-section">
+            <div class="wf-section-label">🗑 삭제할 단어</div>
+            <div class="wf-hint">콤마로 구분해서 여러 개 입력 가능</div>
+            <div class="wf-input-row">
+                <input type="text" id="wf-delete-input" class="text_pole wf-input" placeholder="mechanical, robotic, automatic" />
+                <button id="wf-delete-add" class="menu_button wf-btn-add">추가</button>
+            </div>
+            <div id="wf-delete-list" class="wf-list"></div>
+        </div>
+
+        <hr class="wf-hr" />
+
+        <!-- Replace Section -->
+        <div class="wf-section">
+            <div class="wf-section-label">🔁 치환 규칙 (A → B)</div>
+            <div class="wf-hint">바꿀 단어 비우면 삭제</div>
+            <div class="wf-input-row">
+                <input type="text" id="wf-replace-from" class="text_pole wf-input" placeholder="찾을 단어" />
+                <span class="wf-arrow-label">→</span>
+                <input type="text" id="wf-replace-to" class="text_pole wf-input" placeholder="바꿀 단어" />
+                <button id="wf-replace-add" class="menu_button wf-btn-add">추가</button>
+            </div>
+            <div id="wf-replace-list" class="wf-list"></div>
+        </div>
+
+    </div>
+</div>
