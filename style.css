@@ -1,0 +1,261 @@
+#wf-popup {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 4px;
+    width: 100%;
+    max-width: 480px;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.wf-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.wf-popup-header h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.wf-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.wf-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.wf-section-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+
+.wf-hint {
+    font-size: 0.75rem;
+    opacity: 0.5;
+    margin-top: -4px;
+}
+
+.wf-input-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.wf-replace-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.wf-input {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    font-size: 0.82rem !important;
+}
+
+.wf-replace-row .wf-input {
+    flex: 1;
+    width: auto !important;
+}
+
+.wf-btn-full {
+    width: 100% !important;
+    box-sizing: border-box;
+}
+
+.wf-arrow-label {
+    opacity: 0.5;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.wf-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    min-height: 4px;
+}
+
+.wf-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(255,255,255,0.07);
+    border-radius: 20px;
+    padding: 3px 4px 3px 9px;
+    border: 1px solid rgba(255,255,255,0.1);
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.wf-tag {
+    font-size: 0.78rem;
+    opacity: 0.9;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wf-tag--to { opacity: 0.6; }
+
+.wf-arrow {
+    font-size: 0.7rem;
+    opacity: 0.4;
+    flex-shrink: 0;
+}
+
+.wf-btn-remove {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.65rem;
+    opacity: 0.4;
+    color: inherit;
+    padding: 2px 5px;
+    border-radius: 50%;
+    line-height: 1;
+    transition: opacity 0.15s, background 0.15s;
+    flex-shrink: 0;
+}
+
+.wf-btn-remove:hover {
+    opacity: 1;
+    background: rgba(255,80,80,0.25);
+}
+
+/* ── 반응형 ── */
+@media (max-width: 768px) {
+    #wf-popup {
+        max-width: 100%;
+        padding: 2px;
+        gap: 10px;
+    }
+
+    .wf-replace-row {
+        flex-wrap: wrap;
+    }
+
+    .wf-replace-row .wf-input {
+        flex: 1 1 80px;
+    }
+
+    .wf-arrow-label { display: none; }
+}
+
+@media (max-width: 480px) {
+    #wf-popup {
+        gap: 8px;
+    }
+
+    .wf-section-label { font-size: 0.8rem; }
+    .wf-hint { font-size: 0.7rem; }
+
+    .wf-replace-row {
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .wf-replace-row .wf-input {
+        width: 100% !important;
+    }
+
+    .wf-tag { max-width: 80px; }
+}
+
+/* text_pole 높이 강제 고정 */
+#wf-popup .text_pole {
+    height: 36px !important;
+    min-height: 36px !important;
+    max-height: 36px !important;
+    resize: none !important;
+    overflow: hidden !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+}
+
+/* [WF] 스크립트 정규식 패널에서 숨기기 */
+.regex-script-label:has(.regex_script_name) {
+    display: block;
+}
+
+#saved_regex_scripts .regex-script-label:has(.regex_script_name[title^="[WF]"]),
+#saved_regex_scripts .flex-container:has(.regex_script_name[title^="[WF]"]) {
+    display: none !important;
+}
+
+.wf-toggles {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.wf-toggle-source {
+    font-size: 0.75rem;
+    opacity: 0.6;
+    border: 1px solid rgba(255,255,255,0.15);
+    padding: 2px 8px;
+    border-radius: 12px;
+    transition: opacity 0.15s, border-color 0.15s;
+}
+
+.wf-toggle-source.active {
+    opacity: 1;
+    border-color: #e07070;
+    color: #e07070;
+}
+
+/* 리스트 최대 높이 + 스크롤 */
+.wf-list {
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+/* 탭 */
+.wf-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    margin-bottom: 12px;
+}
+
+.wf-tab {
+    flex: 1;
+    padding: 8px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.15s, border-color 0.15s;
+}
+
+.wf-tab.active {
+    opacity: 1;
+    border-bottom-color: var(--SmartThemeQuoteColor, #b07d4f);
+}
+
+.wf-tab-content {
+    display: block;
+}
