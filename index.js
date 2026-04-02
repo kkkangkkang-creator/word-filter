@@ -101,7 +101,38 @@ function applyToExistingChat() {
     if (s.applyToSource && changed) ctx.saveChat();
 }
 
-// ── 이벤트 훅 ────────────────────────────────────────────────────────────────
+// ── MutationObserver (타이밍 독립적 DOM 감지) ────────────────────────────────
+
+function startObserver() {
+    const chatEl = document.getElementById('chat');
+    if (!chatEl) {
+        setTimeout(startObserver, 500);
+        return;
+    }
+
+    const observer = new MutationObserver((mutations) => {
+        if (!getSettings().enabled) return;
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType !== 1) continue;
+                // 새로 추가된 .mes 요소 감지
+                const mesEl = node.classList?.contains('mes') ? node : node.querySelector?.('.mes');
+                if (!mesEl) continue;
+                const mesId = parseInt(mesEl.getAttribute('mesid'));
+                if (isNaN(mesId)) continue;
+                const ctx = getContext();
+                const msg = ctx.chat?.[mesId];
+                if (!msg || msg.is_user) continue;
+                // DOM이 완전히 그려진 직후 적용
+                requestAnimationFrame(() => safeUpdateMessage(mesId, msg));
+            }
+        }
+    });
+
+    observer.observe(chatEl, { childList: true, subtree: true });
+    console.log('[Word Filter] MutationObserver 시작 ✓');
+}
+
 
 function handleMessageEvent(mesId) {
     if (!getSettings().enabled) return;
@@ -302,26 +333,17 @@ jQuery(async () => {
     getSettings();
 
     // MESSAGE_RECEIVED는 data 객체를 넘김
-    eventSource.on(event_types.MESSAGE_RECEIVED, (data) => {
-        if (!getSettings().enabled) return;
-        const ctx = getContext();
-        const chat = ctx.chat;
-        if (!chat || !chat.length) return;
-        // 마지막 AI 메시지 찾아서 패치
-        for (let i = chat.length - 1; i >= 0; i--) {
-            if (!chat[i].is_user) {
-                setTimeout(() => patchMessage(i), 100);
-                break;
-            }
-        }
+    eventSource.on(event_types.MESSAGE_SWIPED, (mesId) => {
+        setTimeout(() => handleMessageEvent(mesId), 300);
     });
-    // MESSAGE_SWIPED/UPDATED는 mesId를 넘김
-    eventSource.on(event_types.MESSAGE_SWIPED, handleMessageEvent);
-    eventSource.on(event_types.MESSAGE_UPDATED, handleMessageEvent);
+    eventSource.on(event_types.MESSAGE_UPDATED, (mesId) => {
+        setTimeout(() => handleMessageEvent(mesId), 300);
+    });
     eventSource.on(event_types.CHAT_CHANGED, () => {
-        setTimeout(applyToExistingChat, 300);
+        setTimeout(applyToExistingChat, 500);
     });
 
+    startObserver();
     setTimeout(addToWandMenu, 1000);
     console.log('[Word Filter] Loaded ✓');
 });
