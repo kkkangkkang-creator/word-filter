@@ -11,6 +11,7 @@ const defaultSettings = {
     applyToSource: false,
     deleteList: [],
     replaceList: [],
+    showNotifications: true,
 };
 
 function getSettings() {
@@ -29,61 +30,139 @@ function escapeRegex(str) {
 
 function makePattern(word) {
     const escaped = escapeRegex(word);
-    const hasKorean = /[\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F]/.test(word);
-    if (hasKorean) {
-        // 한글: 조사가 붙으므로 경계 없이 포함 검색
-        return escaped;
-    } else {
-        // 영어: 단어 경계
+    // 단어 전체가 영숫자 + 밑줄(즉, \w)로만 구성된 경우에만 단어 경계 \b를 붙인다.
+    // 그렇지 않으면(@, 공백, 한글 등) 경계를 붙이지 않는다.
+    if (/^\w+$/.test(word)) {
         return `\\b${escaped}\\b`;
+    } else {
+        return escaped;
     }
 }
 
 function applyFilters(text) {
     const s = getSettings();
-    if (!s.enabled || !text) return text;
+    if (!s.enabled || !text) return { text, stats: null };  // stats 없음
     let result = text;
+    const stats = {
+        deleted: {},   // { '단어': 삭제된 횟수 }
+        replaced: {}   // { 'from단어 -> to단어': 교체 횟수 }
+    };
+
     for (const rule of s.replaceList) {
         if (!rule.from) continue;
-        try { result = result.replace(new RegExp(makePattern(rule.from), 'gi'), rule.to || ''); } catch(e) {}
+        const regex = new RegExp(makePattern(rule.from), 'gi');
+        const matches = result.match(regex);
+        if (matches) {
+            const key = `${rule.from} → ${rule.to || '(삭제)'}`;
+            stats.replaced[key] = (stats.replaced[key] || 0) + matches.length;
+        }
+        result = result.replace(regex, rule.to || '');
     }
     for (const word of s.deleteList) {
         if (!word) continue;
-        try { result = result.replace(new RegExp(makePattern(word), 'gi'), ''); } catch(e) {}
+        const regex = new RegExp(makePattern(word), 'gi');
+        const matches = result.match(regex);
+        if (matches) {
+            stats.deleted[word] = (stats.deleted[word] || 0) + matches.length;
+        }
+        result = result.replace(regex, '');
     }
-    return result.replace(/ {2,}/g, ' ');
+    result = result.replace(/ {2,}/g, ' ');
+    return { text: result, stats };
 }
 
 // ── DOM 업데이트 (원본 msg.mes 보존) ──────────────────────────────────────────
 
 function safeUpdateMessage(id, msg) {
-    const newText = applyFilters(msg.mes);
+    const { text: newText, stats } = applyFilters(msg.mes);
     if (newText === msg.mes) return false;
 
     const s = getSettings();
 
+    function updateDomDirectly() {
+        try {
+            const msgElement = document.getElementById(id);
+            if (!msgElement) {
+                console.warn('[Word Filter] 요소를 찾을 수 없음 (ID: ' + id + ')');
+                return;
+            }
+            if (msgElement.dataset.wordFilterApplied === 'true') return;
+
+            if (typeof messageFormatting === 'function') {
+                Promise.resolve(messageFormatting(newText, msg.name, !!msg.is_system, !!msg.is_user, id))
+                    .then((html) => {
+                        const textDiv = msgElement.querySelector('.mes_text') || msgElement.querySelector('.mes');
+                        if (textDiv) {
+                            textDiv.innerHTML = html;
+                        } else {
+                            msgElement.innerHTML = html;
+                        }
+                        msgElement.dataset.wordFilterApplied = 'true';
+                        console.log('[Word Filter] DOM 업데이트 성공 (ID: ' + id + ')');
+                    })
+                    .catch((e) => console.error('[Word Filter] formatting 실패:', e));
+            } else {
+                const textDiv = msgElement.querySelector('.mes_text') || msgElement.querySelector('.mes');
+                if (textDiv) {
+                    textDiv.innerHTML = newText;
+                } else {
+                    msgElement.innerHTML = newText;
+                }
+                msgElement.dataset.wordFilterApplied = 'true';
+            }
+        } catch (e) {
+            console.error('[Word Filter] DOM 업데이트 중 오류:', e);
+        }
+    }
+
     if (s.applyToSource) {
-        // 원문 반영 ON: msg.mes 수정 + 저장
         msg.mes = newText;
         try {
             if (typeof updateMessageBlock === 'function') {
                 updateMessageBlock(id, msg);
             }
-        } catch(e) {}
-    } else {
-        // 원문 반영 OFF: DOM만 업데이트
-        try {
-            const msgDiv = document.querySelector(`#chat .mes[mesid="${id}"] .mes_text`);
-            if (msgDiv && typeof messageFormatting === 'function') {
-                msgDiv.innerHTML = messageFormatting(newText, msg.name, !!msg.is_system, !!msg.is_user, id);
-            } else if (msgDiv) {
-                msgDiv.innerHTML = newText;
-            }
-        } catch(e) {
-            console.error('[Word Filter] Update failed:', e);
+        } catch (e) {
+            console.warn('[Word Filter] updateMessageBlock 실패:', e);
         }
+        setTimeout(() => updateDomDirectly(), 200);
+    } else {
+        updateDomDirectly();
     }
+
+    // 🎉 여기서 바뀐 내용을 토스트로 알려줍니다.
+    if (stats) {
+        showFilterToast(stats);
+    }
+
     return true;
+}
+
+function showFilterToast(stats) {
+    if (!getSettings().showNotifications) return;
+    const parts = [];
+    const deletedWords = Object.keys(stats.deleted);
+    if (deletedWords.length > 0) {
+        const totalDeleted = Object.values(stats.deleted).reduce((a, b) => a + b, 0);
+        parts.push(`🗑 ${totalDeleted}개 단어 삭제`);
+        // 구체적으로 보고 싶다면:
+        deletedWords.forEach(w => {
+            parts.push(`  · ${w} (${stats.deleted[w]}회)`);
+        });
+    }
+    const replacedKeys = Object.keys(stats.replaced);
+    if (replacedKeys.length > 0) {
+        const totalReplaced = Object.values(stats.replaced).reduce((a, b) => a + b, 0);
+        parts.push(`🔁 ${totalReplaced}개 치환`);
+        replacedKeys.forEach(k => {
+            parts.push(`  · ${k} (${stats.replaced[k]}회)`);
+        });
+    }
+    const message = parts.join('<br>');
+    if (typeof toastr !== 'undefined') {
+        toastr.info(message, 'Word Filter', { timeOut: 5000, closeButton: true });
+    } else {
+        console.log('[Word Filter] 알림:', message.replace(/<br>/g, '\n'));
+    }
 }
 
 function applyToExistingChat() {
@@ -98,41 +177,54 @@ function applyToExistingChat() {
         if (!msg || msg.is_user) continue;
         if (safeUpdateMessage(i, msg)) changed = true;
     }
-    if (s.applyToSource && changed) ctx.saveChat();
+    if (s.applyToSource && changed) {
+        try {
+            ctx.saveChat();
+        } catch (e) {
+            console.error('[Word Filter] 채팅 저장 실패:', e);
+        }
+    }
 }
 
 // ── MutationObserver (타이밍 독립적 DOM 감지) ────────────────────────────────
 
 function startObserver() {
-    const chatEl = document.getElementById('chat');
-    if (!chatEl) {
-        setTimeout(startObserver, 500);
-        return;
-    }
+    let retryCount = 0;
+    const maxRetries = 50;
 
-    const observer = new MutationObserver((mutations) => {
-        if (!getSettings().enabled) return;
-        for (const mutation of mutations) {
-            for (const node of mutation.addedNodes) {
-                if (node.nodeType !== 1) continue;
-                // 새로 추가된 .mes 요소 감지
-                const mesEl = node.classList?.contains('mes') ? node : node.querySelector?.('.mes');
-                if (!mesEl) continue;
-                const mesId = parseInt(mesEl.getAttribute('mesid'));
-                if (isNaN(mesId)) continue;
-                const ctx = getContext();
-                const msg = ctx.chat?.[mesId];
-                if (!msg || msg.is_user) continue;
-                // DOM이 완전히 그려진 직후 적용
-                requestAnimationFrame(() => safeUpdateMessage(mesId, msg));
+    function tryObserve() {
+        const chatEl = document.getElementById('chat');
+        if (chatEl) {
+            const observer = new MutationObserver((mutations) => {
+                if (!getSettings().enabled) return;
+                for (const mutation of mutations) {
+                    for (const node of mutation.addedNodes) {
+                        if (node.nodeType !== 1) continue;
+                        const mesEl = node.classList?.contains('mes') ? node : node.querySelector?.('.mes');
+                        if (!mesEl) continue;
+                        const mesId = parseInt(mesEl.getAttribute('mesid'));
+                        if (isNaN(mesId)) continue;
+                        const ctx = getContext();
+                        const msg = ctx.chat?.[mesId];
+                        if (!msg || msg.is_user) continue;
+                        requestAnimationFrame(() => safeUpdateMessage(mesId, msg));
+                    }
+                }
+            });
+            observer.observe(chatEl, { childList: true, subtree: true });
+            console.log('[Word Filter] MutationObserver 시작 ✓');
+        } else {
+            retryCount++;
+            if (retryCount <= maxRetries) {
+                console.warn(`[Word Filter] #chat 찾기 재시도 (${retryCount}/${maxRetries})`);
+                setTimeout(tryObserve, 500);
+            } else {
+                console.error('[Word Filter] #chat 요소를 찾지 못해 관찰을 포기합니다.');
             }
         }
-    });
-
-    observer.observe(chatEl, { childList: true, subtree: true });
-    console.log('[Word Filter] MutationObserver 시작 ✓');
+    }
+    tryObserve();
 }
-
 
 function handleMessageEvent(mesId) {
     if (!getSettings().enabled) return;
@@ -193,6 +285,9 @@ function buildPopupHtml() {
                 <label class="wf-toggle-label wf-toggle-source ${s.applyToSource ? 'active' : ''}">원문 반영
                     <input type="checkbox" id="wf-apply-source" ${s.applyToSource ? 'checked' : ''} />
                 </label>
+	  <label class="wf-toggle-label wf-toggle-notify ${s.showNotifications ? 'active' : ''}">🔔 알림
+                    <input type="checkbox" id="wf-show-notifications" ${s.showNotifications ? 'checked' : ''} />
+               </label>
             </div>
         </div>
         <div class="wf-tabs">
@@ -244,6 +339,13 @@ function bindPopupEvents() {
         e.target.closest('.wf-toggle-label')?.classList.toggle('active', s.applyToSource);
         saveSettingsDebounced();
         if (s.applyToSource) applyToExistingChat();
+    });
+
+    document.getElementById('wf-show-notifications')?.addEventListener('change', (e) => {
+        const s = getSettings();
+        s.showNotifications = e.target.checked;
+        e.target.closest('.wf-toggle-label')?.classList.toggle('active', s.showNotifications);
+        saveSettingsDebounced();
     });
 
     document.getElementById('wf-delete-add')?.addEventListener('click', () => {
