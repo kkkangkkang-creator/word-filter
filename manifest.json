@@ -1,0 +1,16 @@
+{
+  "display_name": "Word Filter",
+  "loading_order": 10,
+  "dependencies": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "kkangkkang",
+  "version": "2.3.1",
+  "homePage": "https://github.com/kkkangkkang-creator/word-filter",
+  "auto_update": false,
+  "hooks": {
+    "enable": "onEnable",
+    "disable": "onDisable"
+  },
+  "minimum_client_version": "1.13.3"
+}

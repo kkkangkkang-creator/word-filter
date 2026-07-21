@@ -1,0 +1,162 @@
+<div id="wf-app" class="wf-app">
+    <header class="wf-header">
+        <div class="wf-title-block">
+            <div class="wf-eyebrow">SillyTavern Extension · v2.3.1</div>
+            <h2>Word Filter</h2>
+            <p>AI 메시지의 반복 표현을 삭제하거나 다른 표현으로 치환합니다.</p>
+        </div>
+        <div class="wf-status-pill">
+            <i class="fa-solid fa-circle"></i>
+            <span id="wf-mode-label">표시 전용 모드</span>
+        </div>
+    </header>
+
+    <section class="wf-settings-strip" aria-label="기본 설정">
+        <label class="wf-switch-row">
+            <span>
+                <strong>필터 활성화</strong>
+                <small>끄면 화면 필터를 제거합니다. 저장 원문은 “원문 복원”이 필요합니다.</small>
+            </span>
+            <input id="wf-enabled" type="checkbox">
+            <span class="wf-switch" aria-hidden="true"></span>
+        </label>
+        <label class="wf-compact-check"><input id="wf-notifications" type="checkbox"> 알림</label>
+        <label class="wf-compact-check"><input id="wf-case-sensitive" type="checkbox"> 대소문자 구분</label>
+        <label class="wf-compact-check"><input id="wf-collapse-spaces" type="checkbox"> 연속 공백 정리</label>
+    </section>
+
+    <nav class="wf-tabs" role="tablist">
+        <button type="button" class="wf-tab active" data-tab="delete" role="tab" aria-selected="true">
+            <i class="fa-solid fa-eraser"></i><span>삭제</span>
+        </button>
+        <button type="button" class="wf-tab" data-tab="replace" role="tab" aria-selected="false">
+            <i class="fa-solid fa-arrow-right-arrow-left"></i><span>치환</span>
+        </button>
+        <button type="button" class="wf-tab" data-tab="export" role="tab" aria-selected="false">
+            <i class="fa-solid fa-file-export"></i><span>내보내기</span>
+        </button>
+        <button type="button" class="wf-tab" data-tab="safety" role="tab" aria-selected="false">
+            <i class="fa-solid fa-shield-halved"></i><span>원문·복원</span>
+        </button>
+    </nav>
+
+    <section class="wf-tab-panel" data-panel="delete">
+        <div class="wf-card">
+            <div class="wf-card-heading">
+                <div><h3>삭제할 단어</h3><p>쉼표 또는 줄바꿈으로 여러 개를 한꺼번에 추가할 수 있습니다.</p></div>
+                <span id="wf-delete-count" class="wf-count">0개</span>
+            </div>
+            <div class="wf-compose-grid">
+                <textarea id="wf-delete-input" class="text_pole wf-textarea" rows="2" placeholder="예: mechanical, rhythmic"></textarea>
+                <select id="wf-delete-language" class="text_pole" data-wf-language-select></select>
+                <button id="wf-delete-add" type="button" class="menu_button wf-action-button wf-primary-button"><i class="fa-solid fa-plus"></i> 추가</button>
+            </div>
+        </div>
+
+        <div class="wf-list-toolbar">
+            <div class="wf-search-wrap"><i class="fa-solid fa-magnifying-glass"></i><input id="wf-delete-search" class="text_pole" type="search" placeholder="목록 검색"></div>
+            <select id="wf-delete-filter" class="text_pole" data-wf-language-select></select>
+        </div>
+        <div id="wf-delete-list" class="wf-rule-list"></div>
+        <div id="wf-delete-empty" class="wf-empty"><i class="fa-regular fa-folder-open"></i><span>등록된 삭제 단어가 없습니다.</span></div>
+    </section>
+
+    <section class="wf-tab-panel" data-panel="replace" hidden>
+        <div class="wf-card">
+            <div class="wf-card-heading">
+                <div><h3>치환 규칙</h3><p>결과를 비워 두면 해당 표현을 삭제합니다. 위쪽 규칙부터 차례대로 적용됩니다.</p></div>
+                <span id="wf-replace-count" class="wf-count">0개</span>
+            </div>
+            <div class="wf-replace-compose">
+                <input id="wf-replace-from" class="text_pole" type="text" placeholder="바꿀 표현">
+                <i class="fa-solid fa-arrow-right wf-compose-arrow"></i>
+                <input id="wf-replace-to" class="text_pole" type="text" placeholder="바뀔 표현 (비우면 삭제)">
+                <select id="wf-replace-language" class="text_pole" data-wf-language-select></select>
+                <button id="wf-replace-add" type="button" class="menu_button wf-action-button wf-primary-button"><i class="fa-solid fa-plus"></i> 추가</button>
+            </div>
+        </div>
+
+        <div class="wf-list-toolbar">
+            <div class="wf-search-wrap"><i class="fa-solid fa-magnifying-glass"></i><input id="wf-replace-search" class="text_pole" type="search" placeholder="목록 검색"></div>
+            <select id="wf-replace-filter" class="text_pole" data-wf-language-select></select>
+        </div>
+        <div id="wf-replace-list" class="wf-rule-list"></div>
+        <div id="wf-replace-empty" class="wf-empty"><i class="fa-regular fa-folder-open"></i><span>등록된 치환 규칙이 없습니다.</span></div>
+    </section>
+
+    <section class="wf-tab-panel" data-panel="export" hidden>
+        <div class="wf-card">
+            <div class="wf-card-heading">
+                <div><h3>정규식용 텍스트</h3><p>선택한 언어의 단어를 <code>|</code>로 연결합니다.</p></div>
+                <span id="wf-export-count" class="wf-count">0개 항목</span>
+            </div>
+            <div class="wf-export-options">
+                <label><span>언어</span><select id="wf-export-language" class="text_pole" data-wf-language-select></select></label>
+                <label class="wf-compact-check"><input id="wf-export-delete" type="checkbox"> 삭제 단어</label>
+                <label class="wf-compact-check"><input id="wf-export-replace" type="checkbox"> 치환 원문</label>
+                <label class="wf-compact-check"><input id="wf-export-escape" type="checkbox"> 특수문자 이스케이프</label>
+            </div>
+            <textarea id="wf-export-output" class="text_pole wf-export-output" rows="7" readonly placeholder="mechanical|rhythmic|금지어3"></textarea>
+            <div class="wf-button-row">
+                <button id="wf-export-copy" type="button" class="menu_button wf-action-button wf-primary-button"><i class="fa-regular fa-copy"></i> 복사</button>
+                <button id="wf-export-download" type="button" class="menu_button wf-action-button"><i class="fa-solid fa-download"></i> TXT 저장</button>
+            </div>
+        </div>
+
+        <div class="wf-card">
+            <div class="wf-card-heading"><div><h3>언어 그룹</h3><p>기본 그룹 외에 장르나 용도별 사용자 그룹도 만들 수 있습니다.</p></div></div>
+            <div id="wf-language-groups" class="wf-group-list"></div>
+            <div class="wf-inline-compose">
+                <input id="wf-group-name" class="text_pole" type="text" placeholder="새 그룹 이름">
+                <button id="wf-group-add" type="button" class="menu_button wf-action-button"><i class="fa-solid fa-plus"></i> 그룹 추가</button>
+            </div>
+        </div>
+
+        <div class="wf-card wf-card-muted">
+            <div class="wf-card-heading"><div><h3>전체 설정 백업</h3><p>삭제·치환 규칙과 언어 그룹을 JSON으로 보관합니다.</p></div></div>
+            <div class="wf-button-row">
+                <button id="wf-json-export" type="button" class="menu_button wf-action-button"><i class="fa-solid fa-box-archive"></i> JSON 내보내기</button>
+                <button id="wf-json-import" type="button" class="menu_button wf-action-button"><i class="fa-solid fa-file-import"></i> JSON 가져오기</button>
+                <input id="wf-json-file" type="file" accept="application/json,.json" hidden>
+            </div>
+        </div>
+    </section>
+
+    <section class="wf-tab-panel" data-panel="safety" hidden>
+        <div class="wf-warning-card">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <div><strong>표시 전용 모드가 기본값입니다.</strong><p>원문 저장 모드는 모델에 전달되는 채팅 기록까지 변경합니다. 기존 채팅은 아래 버튼을 눌렀을 때만 일괄 변경됩니다.</p></div>
+        </div>
+
+        <div class="wf-card">
+            <label class="wf-switch-row wf-switch-row-wide">
+                <span><strong>새 AI 메시지의 원문에 저장</strong><small>생성·편집·스와이프된 메시지만 적용하며, 전체 원문 대신 변경 부분 중심으로 백업합니다.</small></span>
+                <input id="wf-persist-source" type="checkbox">
+                <span class="wf-switch" aria-hidden="true"></span>
+            </label>
+        </div>
+
+        <div class="wf-danger-grid">
+            <div class="wf-card">
+                <h3>현재 채팅에 일괄 적용</h3>
+                <p>현재 채팅의 모든 AI 메시지와 스와이프에 최신 규칙을 적용합니다.</p>
+                <button id="wf-apply-current-chat" type="button" class="menu_button wf-action-button wf-danger-button"><i class="fa-solid fa-wand-magic-sparkles"></i> 현재 채팅 원문 변경</button>
+            </div>
+            <div class="wf-card">
+                <h3>백업 원문 복원</h3>
+                <p>이 확장이 변경한 현재 채팅의 원문과 스와이프를 되돌립니다. 직접 수정된 충돌 항목은 안전하게 건너뜁니다.</p>
+                <button id="wf-restore-current-chat" type="button" class="menu_button wf-action-button"><i class="fa-solid fa-clock-rotate-left"></i> 원문 복원</button>
+            </div>
+        </div>
+
+
+        <div id="wf-operation-result" class="wf-card wf-operation-result" hidden>
+            <div class="wf-card-heading">
+                <div><h3>최근 일괄 작업 결과</h3><p>화면에 표시된 개수가 아니라 실제 채팅 데이터에서 검사한 범위를 보여줍니다.</p></div>
+            </div>
+            <pre id="wf-operation-result-body" class="wf-operation-result-body"></pre>
+            <p id="wf-operation-refresh-note" class="wf-operation-refresh-note" hidden>원문 저장은 완료되었습니다. 현재 화면은 자동으로 전체 재렌더링하지 않아 잠시 이전 내용으로 보일 수 있습니다.</p>
+            <button id="wf-refresh-current-chat" type="button" class="menu_button wf-action-button" hidden><i class="fa-solid fa-rotate"></i> 현재 화면 새로고침</button>
+        </div>
+    </section>
+</div>
