@@ -282,9 +282,3 @@ export function restoreMessageBackups(message, { force = false } = {}) {
     cleanExtra(message);
     return { restored, conflicts, changed };
 }
-
-export function estimateBackupBytes(message) {
-    const v3 = message?.extra?.[BACKUP_KEY_V3];
-    const v2 = message?.extra?.[BACKUP_KEY_V2];
-    return new TextEncoder().encode(JSON.stringify({ v3, v2 })).byteLength;
-}

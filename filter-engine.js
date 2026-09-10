@@ -91,7 +91,6 @@ function compileRule(term, caseSensitive) {
 }
 
 export function compileFilterProgram(settings) {
-    const startedAt = globalThis.performance?.now?.() ?? Date.now();
     const caseSensitive = Boolean(settings?.caseSensitive);
     const replaceRules = [];
     const deleteRules = [];
@@ -116,16 +115,13 @@ export function compileFilterProgram(settings) {
     const quickRegex = allPatterns.length
         ? new RegExp(allPatterns.join('|'), caseSensitive ? 'u' : 'iu')
         : null;
-    const endedAt = globalThis.performance?.now?.() ?? Date.now();
     return Object.freeze({
         enabled: settings?.enabled !== false,
-        caseSensitive,
         collapseSpaces: settings?.collapseSpaces !== false,
         replaceRules,
         deleteRules,
         quickRegex,
         hasRules: replaceRules.length > 0 || deleteRules.length > 0,
-        compileMs: Math.max(0, endedAt - startedAt),
     });
 }
 
@@ -172,8 +168,6 @@ function replaceWithEdits(input, rule, replacement, edits) {
 function collapseSpacesWithEdits(input, edits) {
     const rule = {
         regex: /[ \t]{2,}/gu,
-        needle: '  ',
-        caseSensitive: true,
     };
     return replaceWithEdits(input, rule, ' ', edits);
 }
@@ -229,10 +223,6 @@ export function applyFilterProgram(text, program) {
     };
 }
 
-export function applyFilters(text, settings) {
-    return applyFilterProgram(text, compileFilterProgram(settings));
-}
-
 export function getRegexExportTerms(settings, options = {}) {
     const {
         language = 'all',
@@ -264,8 +254,4 @@ export function getRegexExportTerms(settings, options = {}) {
     }
 
     return [...new Set(terms)];
-}
-
-export function buildRegexExport(settings, options = {}) {
-    return getRegexExportTerms(settings, options).join('|');
 }

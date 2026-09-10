@@ -37,15 +37,11 @@ export function writeVariantText(message, key, value) {
     return true;
 }
 
-function applyWithMemo(text, program, memo, result) {
-    if (!memo) {
-        result.evaluatedTexts += 1;
-        return applyFilterProgram(text, program);
-    }
+function applyWithMemo(text, program, memo) {
+    if (!memo) return applyFilterProgram(text, program);
     if (memo.has(text)) return memo.get(text);
     const filtered = applyFilterProgram(text, program);
     memo.set(text, filtered);
-    result.evaluatedTexts += 1;
     return filtered;
 }
 
@@ -60,13 +56,8 @@ export function processMessageVariants(message, program, memo = null) {
     const stats = createEmptyStats();
     const result = {
         changed: false,
-        changedVariants: 0,
-        matchedVariants: 0,
-        scannedVariants: 0,
-        evaluatedTexts: 0,
         conflicts: 0,
         stats,
-        changedKeys: [],
     };
 
     const activeSwipe = getActiveSwipeIndex(message);
@@ -85,17 +76,14 @@ export function processMessageVariants(message, program, memo = null) {
     }));
 
     for (const { key, current, original } of entries) {
-        const representedFields = key === activeKey && mesMirrorsActive ? 2 : 1;
-        result.scannedVariants += representedFields;
         if (original.conflict) {
             result.conflicts += 1;
             continue;
         }
 
-        const filtered = applyWithMemo(original.text, program, memo, result);
+        const filtered = applyWithMemo(original.text, program, memo);
         mergeStats(stats, filtered.stats);
         if (filtered.changed) {
-            result.matchedVariants += representedFields;
             storeVariantBackup(message, key, original.text, filtered.text, filtered.edits);
         } else if (original.backedUp) {
             clearVariantBackup(message, key);
@@ -104,36 +92,11 @@ export function processMessageVariants(message, program, memo = null) {
         if (current !== filtered.text) {
             writeVariantText(message, key, filtered.text);
             result.changed = true;
-            result.changedVariants += representedFields;
-            result.changedKeys.push(key);
             if (key === activeKey && mesMirrorsActive) {
                 message.mes = filtered.text;
-                result.changedKeys.push('mes');
             }
         }
     }
 
     return result;
-}
-
-// Kept as an exported developer helper. The interactive batch path deliberately
-// does not call it because a second full pass doubles work on large chats.
-export function verifyMessageVariants(message, program) {
-    let scannedVariants = 0;
-    let mismatches = 0;
-    let conflicts = 0;
-
-    for (const key of getAllVariantKeys(message)) {
-        scannedVariants += 1;
-        const current = readVariantText(message, key);
-        const original = resolveOriginalVariant(message, key);
-        if (original.conflict) {
-            conflicts += 1;
-            continue;
-        }
-        const expected = applyFilterProgram(original.text, program).text;
-        if (current !== expected) mismatches += 1;
-    }
-
-    return { scannedVariants, mismatches, conflicts };
 }
