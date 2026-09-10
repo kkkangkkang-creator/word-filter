@@ -20,11 +20,7 @@ import {
     setCurrentVariant,
     storeVariantBackup,
 } from './message-backup.js';
-import {
-    getAllVariantKeys,
-    processMessageVariants,
-    readVariantText,
-} from './chat-batch.js';
+import { processMessageVariants } from './chat-batch.js';
 import { classifyChatMessage, isFilterableMessage } from './message-classifier.js?v=2.3.1';
 
 const EXTENSION_KEY = 'word-filter';
@@ -180,7 +176,6 @@ function getProgram() {
     return compiledProgram;
 }
 
-
 function resolveMessageId(data, fallbackToLast = false) {
     if (Number.isInteger(data)) return data;
     if (typeof data === 'string' && /^\d+$/u.test(data)) return Number(data);
@@ -259,7 +254,7 @@ async function updateMessageSafely(messageId, message) {
     }
 }
 
-async function renderDisplayMessage(messageId, { notify = false } = {}) {
+async function renderDisplayMessage(messageId) {
     const settings = getSettings();
     if (!settings.enabled || settings.persistToSource) return false;
 
@@ -295,7 +290,6 @@ async function renderDisplayMessage(messageId, { notify = false } = {}) {
         else delete currentElement.dataset.wordFilterDisplaySignature;
     }
 
-    if (notify && result.changed) notifyStats(result.stats);
     return updated;
 }
 
@@ -313,7 +307,6 @@ async function restoreDisplayMessage(messageId) {
 function nextFrame() {
     return new Promise(resolve => requestAnimationFrame(() => resolve()));
 }
-
 
 function scheduleDisplayFlush() {
     if (displayFrame !== null || displayFlushRunning || queuedDisplayIds.size === 0) return;
@@ -378,7 +371,6 @@ async function applySourceMessage(messageId, {
     notify = false,
     save = false,
     rerender = false,
-    repairConflict = true,
 } = {}) {
     const settings = getSettings();
     if (!settings.enabled || !settings.persistToSource) return { changed: false, stats: createEmptyStats() };
@@ -401,12 +393,10 @@ async function applySourceMessage(messageId, {
     } else {
         const resolved = resolveOriginalVariant(message, key);
         hadBackup = resolved.backedUp;
-        if (resolved.conflict && repairConflict) {
+        if (resolved.conflict) {
             clearVariantBackup(message, key);
             hadBackup = false;
             original = currentText;
-        } else if (resolved.conflict) {
-            return { changed: false, conflict: true, stats: createEmptyStats() };
         } else {
             original = resolved.text;
         }
@@ -432,7 +422,6 @@ async function applySourceMessage(messageId, {
     if (notify) notifyStats(result.stats);
     return { changed: true, stats: result.stats };
 }
-
 
 async function applyToCurrentChat() {
     const context = getContext();

@@ -802,11 +802,6 @@
     }
 }
 
-
-
-
-
-
 .wf-operation-result-body {
     margin: 0;
     padding: 12px 14px;
@@ -837,11 +832,6 @@
 .wf-dialog .popup-content {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-}
-
-.wf-operation-result-body {
-    border-color: rgba(127, 127, 127, 0.24);
-    background: rgba(127, 127, 127, 0.12);
 }
 
 @supports (color: color-mix(in srgb, black 50%, white)) {
