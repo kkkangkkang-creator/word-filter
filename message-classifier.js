@@ -36,8 +36,8 @@ export function classifyChatMessage(message) {
     const summarizedHidden = readBooleanFlag(message._summarizedHidden);
     const assistantShape = hasAssistantSwipeShape(message);
 
-    // Narrow compatibility exception: the summarizer used by the reporter sets
-    // both flags on old turns. Only hidden non-user turns that still have the
+    // Narrow compatibility exception: some summarizer extensions set both
+    // flags on old turns. Only hidden non-user turns that still have the
     // assistant swipe structure bypass is_system.
     if (isSystem) {
         if (summarizedHidden && assistantShape) return 'assistant';

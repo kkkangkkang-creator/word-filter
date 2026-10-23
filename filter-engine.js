@@ -7,7 +7,8 @@ export const DEFAULT_LANGUAGE_GROUPS = Object.freeze([
 ]);
 
 export function escapeRegex(value) {
-    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // `/` is escaped as well so exported terms survive `/pattern/flags` notation.
+    return String(value).replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 }
 
 export function makePattern(term) {
@@ -39,10 +40,11 @@ export function normalizeDeleteRule(rule, fallbackLanguage = 'other') {
         return { id: '', text: rule.trim(), language: detectLanguageGroup(rule) || fallbackLanguage };
     }
 
+    const text = String(rule?.text ?? rule?.word ?? '').trim();
     return {
         id: String(rule?.id ?? ''),
-        text: String(rule?.text ?? rule?.word ?? '').trim(),
-        language: String(rule?.language ?? fallbackLanguage),
+        text,
+        language: String(rule?.language || detectLanguageGroup(text) || fallbackLanguage),
     };
 }
 
@@ -51,7 +53,7 @@ export function normalizeReplaceRule(rule, fallbackLanguage = 'other') {
         id: String(rule?.id ?? ''),
         from: String(rule?.from ?? '').trim(),
         to: String(rule?.to ?? ''),
-        language: String(rule?.language ?? detectLanguageGroup(rule?.from) ?? fallbackLanguage),
+        language: String(rule?.language || detectLanguageGroup(rule?.from) || fallbackLanguage),
     };
 }
 
@@ -110,6 +112,9 @@ export function compileFilterProgram(settings) {
         if (!compiled) continue;
         deleteRules.push({ ...rule, ...compiled });
     }
+    // Longer terms run first so "very much" is not pre-empted by "very".
+    // Array.prototype.sort is stable, so equal lengths keep the list order.
+    deleteRules.sort((a, b) => b.text.length - a.text.length);
 
     const allPatterns = [...replaceRules, ...deleteRules].map(rule => `(?:${rule.pattern})`);
     const quickRegex = allPatterns.length
@@ -118,6 +123,7 @@ export function compileFilterProgram(settings) {
     return Object.freeze({
         enabled: settings?.enabled !== false,
         collapseSpaces: settings?.collapseSpaces !== false,
+        protectMarkup: settings?.protectMarkup !== false,
         replaceRules,
         deleteRules,
         quickRegex,
@@ -165,32 +171,46 @@ function replaceWithEdits(input, rule, replacement, edits) {
     return { text: chunks.join(''), count };
 }
 
-function collapseSpacesWithEdits(input, edits) {
-    const rule = {
-        regex: /[ \t]{2,}/gu,
-    };
-    return replaceWithEdits(input, rule, ' ', edits);
+// Only runs between two non-space characters (or before the end of a
+// segment), so line indentation and Markdown hard breaks ("  \n") survive.
+const COLLAPSIBLE_SPACES = /(?<=\S)[ \t]{2,}(?=\S|$)/gu;
+
+// Code fences, inline code, HTML comments, <style>/<script> blocks and HTML
+// tags are left untouched. Text between tags is still filtered.
+const PROTECTED_MARKUP = /```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)|`[^`\n]+`|<!--[\s\S]*?(?:-->|$)|<(style|script)\b[\s\S]*?<\/\1\s*>|<\/?[A-Za-z][^<>]*>/giu;
+
+export function splitProtectedSegments(text) {
+    const source = String(text ?? '');
+    const segments = [];
+    let cursor = 0;
+    PROTECTED_MARKUP.lastIndex = 0;
+    let match;
+    while ((match = PROTECTED_MARKUP.exec(source)) !== null) {
+        if (!match[0]) {
+            PROTECTED_MARKUP.lastIndex += 1;
+            continue;
+        }
+        if (match.index > cursor) segments.push({ text: source.slice(cursor, match.index), protected: false });
+        segments.push({ text: match[0], protected: true });
+        cursor = match.index + match[0].length;
+    }
+    if (cursor < source.length) segments.push({ text: source.slice(cursor), protected: false });
+    return segments;
 }
 
-export function applyFilterProgram(text, program) {
-    const source = String(text ?? '');
-    if (!program?.enabled || !program?.hasRules || !source) {
-        return { text: source, stats: createEmptyStats(), changed: false, edits: [] };
-    }
+function collapseSpacesWithEdits(input, edits) {
+    return replaceWithEdits(input, { regex: COLLAPSIBLE_SPACES }, ' ', edits);
+}
 
-    const hasRuleMatch = (() => {
-        if (!program.quickRegex) return false;
-        program.quickRegex.lastIndex = 0;
-        return program.quickRegex.test(source);
-    })();
-    const hasCollapsibleSpaces = program.collapseSpaces && /[ \t]{2,}/u.test(source);
-    if (!hasRuleMatch && !hasCollapsibleSpaces) {
-        return { text: source, stats: createEmptyStats(), changed: false, edits: [] };
-    }
+function hasCollapsibleSpaces(text) {
+    COLLAPSIBLE_SPACES.lastIndex = 0;
+    const found = COLLAPSIBLE_SPACES.test(text);
+    COLLAPSIBLE_SPACES.lastIndex = 0;
+    return found;
+}
 
-    let result = source;
-    const stats = createEmptyStats();
-    const edits = [];
+function filterSegment(input, program, stats, edits) {
+    let result = input;
 
     for (const rule of program.replaceRules) {
         const applied = replaceWithEdits(result, rule, rule.to, edits);
@@ -214,7 +234,50 @@ export function applyFilterProgram(text, program) {
     if (program.collapseSpaces) {
         result = collapseSpacesWithEdits(result, edits).text;
     }
+    return result;
+}
 
+export function applyFilterProgram(text, program) {
+    const source = String(text ?? '');
+    if (!program?.enabled || !program?.hasRules || !source) {
+        return { text: source, stats: createEmptyStats(), changed: false, edits: [] };
+    }
+
+    const hasRuleMatch = (() => {
+        if (!program.quickRegex) return false;
+        program.quickRegex.lastIndex = 0;
+        return program.quickRegex.test(source);
+    })();
+    if (!hasRuleMatch && !(program.collapseSpaces && hasCollapsibleSpaces(source))) {
+        return { text: source, stats: createEmptyStats(), changed: false, edits: [] };
+    }
+
+    const segments = program.protectMarkup
+        ? splitProtectedSegments(source)
+        : [{ text: source, protected: false }];
+    const stats = createEmptyStats();
+    const edits = [];
+    const output = [];
+    // Segments are filtered left to right, so each edit position is shifted by
+    // the length of the already-filtered prefix. invertPatch stays valid.
+    let offset = 0;
+
+    for (const segment of segments) {
+        if (segment.protected) {
+            output.push(segment.text);
+            offset += segment.text.length;
+            continue;
+        }
+        const segmentEdits = [];
+        const filtered = filterSegment(segment.text, program, stats, segmentEdits);
+        for (const [position, removed, inserted] of segmentEdits) {
+            edits.push([position + offset, removed, inserted]);
+        }
+        output.push(filtered);
+        offset += filtered.length;
+    }
+
+    const result = output.join('');
     return {
         text: result,
         stats,

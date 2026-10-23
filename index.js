@@ -9,7 +9,7 @@ import {
     normalizeDeleteRule,
     normalizeReplaceRule,
     splitEntries,
-} from './filter-engine.js';
+} from './filter-engine.js?v=2.4.0';
 import {
     clearVariantBackup,
     getCurrentVariantKey,
@@ -19,14 +19,16 @@ import {
     restoreMessageBackups,
     setCurrentVariant,
     storeVariantBackup,
-} from './message-backup.js';
-import { processMessageVariants } from './chat-batch.js';
-import { classifyChatMessage, isFilterableMessage } from './message-classifier.js?v=2.3.1';
+} from './message-backup.js?v=2.4.0';
+import { processMessageVariants } from './chat-batch.js?v=2.4.0';
+import { classifyChatMessage, isFilterableMessage } from './message-classifier.js?v=2.4.0';
 
 const EXTENSION_KEY = 'word-filter';
 const EXTENSION_PATH = 'third-party/word-filter';
 const VERSION = 3;
-const DISPLAY_VERSION = '2.3.1';
+// Keep in sync with manifest.json, template.html and every `?v=` import query
+// (tests/version.test.mjs checks this).
+const DISPLAY_VERSION = '2.4.0';
 const TEMPLATE_URL = new URL(`./template.html?v=${DISPLAY_VERSION}`, import.meta.url);
 
 let initialized = false;
@@ -68,6 +70,7 @@ function defaultSettings() {
         showNotifications: false,
         caseSensitive: false,
         collapseSpaces: true,
+        protectMarkup: true,
         deleteRules: [],
         replaceRules: [],
         languageGroups: clone(DEFAULT_LANGUAGE_GROUPS),
@@ -101,6 +104,7 @@ function migrateSettings(rawSettings) {
     migrated.showNotifications = Boolean(raw.showNotifications ?? false);
     migrated.caseSensitive = Boolean(raw.caseSensitive);
     migrated.collapseSpaces = raw.collapseSpaces !== false;
+    migrated.protectMarkup = raw.protectMarkup !== false;
     migrated.languageGroups = normalizeGroups(raw.languageGroups);
 
     const groupIds = new Set(migrated.languageGroups.map(group => group.id));
@@ -157,6 +161,7 @@ function getSettings() {
         && current.exportOptions && typeof current.exportOptions === 'object';
     settingsRef = valid ? current : migrateSettings(current);
     context.extensionSettings[EXTENSION_KEY] = settingsRef;
+    if (!valid) saveSettings();
     return settingsRef;
 }
 
@@ -264,10 +269,14 @@ async function renderDisplayMessage(messageId) {
     if (!isFilterableMessage(message) || !element || isEditing(element)) return false;
 
     const currentKey = getCurrentVariantKey(message);
-    const resolvedSource = resolveOriginalVariant(message, currentKey);
-    const source = resolvedSource.backedUp && !resolvedSource.conflict
-        ? resolvedSource.text
-        : String(message.mes ?? '');
+    // Other extensions (e.g. Translate) render extra.display_text instead of
+    // mes. Filter that text so their output is kept rather than overwritten.
+    const foreignDisplayText = typeof message.extra?.display_text === 'string' && message.extra.display_text
+        ? message.extra.display_text
+        : null;
+    const resolvedSource = foreignDisplayText === null ? resolveOriginalVariant(message, currentKey) : null;
+    const source = foreignDisplayText
+        ?? (resolvedSource.backedUp && !resolvedSource.conflict ? resolvedSource.text : String(message.mes ?? ''));
     const result = filterMessageText(message, source);
     const signature = `${rulesRevision}:${currentKey}:${hashText(source)}:${hashText(result.text)}`;
     if (element.dataset.wordFilterDisplaySignature === signature) return false;
@@ -275,7 +284,7 @@ async function renderDisplayMessage(messageId) {
     // A message previously changed in source mode already contains the desired
     // filtered text. Display-only mode must not render an identical overlay for
     // every visible message when that chat is reopened.
-    const nativeDisplayText = String(message.mes ?? '');
+    const nativeDisplayText = foreignDisplayText ?? String(message.mes ?? '');
     if (result.text === nativeDisplayText && !element.dataset.wordFilterDisplaySignature) return false;
 
     let updated = false;
@@ -418,7 +427,9 @@ async function applySourceMessage(messageId, {
     if (save && typeof context.saveChat === 'function') {
         await Promise.resolve(context.saveChat());
     }
-    if (rerender) await updateMessageSafely(messageId, message);
+    if (rerender && getMessageElement(messageId) && !isEditing(getMessageElement(messageId))) {
+        await updateMessageSafely(messageId, message);
+    }
     if (notify) notifyStats(result.stats);
     return { changed: true, stats: result.stats };
 }
@@ -534,9 +545,10 @@ async function restoreCurrentChat() {
         return;
     }
 
+    // Source mode would re-filter the restored text on the next event, so turn
+    // it off. The display-only filter stays as the user left it.
     const settings = getSettings();
     settings.persistToSource = false;
-    settings.enabled = false;
     saveSettings();
     rebuildProgram();
     await Promise.resolve(context.saveChat?.());
@@ -552,7 +564,7 @@ async function restoreCurrentChat() {
     renderOpenManager();
 
     globalThis.toastr?.success?.(
-        `${changedMessageIds.length}개 메시지, ${restoredVariants}개 항목을 복원하고 필터를 껐습니다.${conflicts ? ` 충돌 ${conflicts}개는 건너뛰었습니다.` : ''}`,
+        `${changedMessageIds.length}개 메시지, ${restoredVariants}개 항목을 복원하고 원문 저장 모드를 껐습니다.${settings.enabled ? ' 표시 전용 필터는 유지됩니다.' : ''}${conflicts ? ` 충돌 ${conflicts}개는 건너뛰었습니다.` : ''}`,
         'Word Filter',
     );
 }
@@ -646,6 +658,16 @@ function makeRuleLanguageSelect(rule) {
         if (root) renderExport(root);
     });
     return select;
+}
+
+// Enter while a Hangul syllable is still being composed would add the rule
+// and leave the last character behind in the cleared input.
+function isImeComposing(event) {
+    return event.isComposing || event.keyCode === 229;
+}
+
+function ruleKey(text) {
+    return getSettings().caseSensitive ? text : text.toLocaleLowerCase();
 }
 
 function afterRulesChanged(root) {
@@ -829,6 +851,7 @@ function renderManager(root) {
     root.querySelector('#wf-notifications').checked = settings.showNotifications;
     root.querySelector('#wf-case-sensitive').checked = settings.caseSensitive;
     root.querySelector('#wf-collapse-spaces').checked = settings.collapseSpaces;
+    root.querySelector('#wf-protect-markup').checked = settings.protectMarkup;
     root.querySelector('#wf-persist-source').checked = settings.persistToSource;
     root.classList.toggle('wf-disabled', !settings.enabled);
     root.querySelector('#wf-mode-label').textContent = settings.persistToSource ? '원문 저장 모드' : '표시 전용 모드';
@@ -875,7 +898,7 @@ function bindManager(root) {
         getSettings().showNotifications = event.target.checked;
         saveSettings();
     });
-    for (const [id, key] of [['wf-case-sensitive', 'caseSensitive'], ['wf-collapse-spaces', 'collapseSpaces']]) {
+    for (const [id, key] of [['wf-case-sensitive', 'caseSensitive'], ['wf-collapse-spaces', 'collapseSpaces'], ['wf-protect-markup', 'protectMarkup']]) {
         root.querySelector(`#${id}`).addEventListener('change', event => {
             getSettings()[key] = event.target.checked;
             saveSettings();
@@ -907,10 +930,14 @@ function bindManager(root) {
         const input = root.querySelector('#wf-delete-input');
         const entries = splitEntries(input.value);
         if (!entries.length) return;
-        const existing = new Set(settings.deleteRules.map(rule => rule.text.toLocaleLowerCase()));
+        const existing = new Set(settings.deleteRules.map(rule => ruleKey(rule.text)));
+        let skipped = 0;
         for (const text of entries) {
-            const key = text.toLocaleLowerCase();
-            if (existing.has(key)) continue;
+            const key = ruleKey(text);
+            if (existing.has(key)) {
+                skipped += 1;
+                continue;
+            }
             existing.add(key);
             settings.deleteRules.push({
                 id: createId('delete'),
@@ -919,9 +946,11 @@ function bindManager(root) {
             });
         }
         input.value = '';
+        if (skipped > 0) globalThis.toastr?.info?.(`이미 있는 단어 ${skipped}개는 건너뛰었습니다.`, 'Word Filter');
         afterRulesChanged(root);
     });
     root.querySelector('#wf-delete-input').addEventListener('keydown', event => {
+        if (isImeComposing(event)) return;
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
             root.querySelector('#wf-delete-add').click();
@@ -934,7 +963,7 @@ function bindManager(root) {
         const toInput = root.querySelector('#wf-replace-to');
         const from = fromInput.value.trim();
         if (!from) return;
-        if (settings.replaceRules.some(rule => rule.from.toLocaleLowerCase() === from.toLocaleLowerCase())) {
+        if (settings.replaceRules.some(rule => ruleKey(rule.from) === ruleKey(from))) {
             globalThis.toastr?.warning?.('같은 치환 원문이 이미 있습니다.', 'Word Filter');
             return;
         }
@@ -948,8 +977,20 @@ function bindManager(root) {
         toInput.value = '';
         afterRulesChanged(root);
     });
+    root.querySelector('#wf-replace-from').addEventListener('keydown', event => {
+        if (isImeComposing(event) || event.key !== 'Enter') return;
+        event.preventDefault();
+        root.querySelector('#wf-replace-to').focus();
+    });
     root.querySelector('#wf-replace-to').addEventListener('keydown', event => {
-        if (event.key === 'Enter') root.querySelector('#wf-replace-add').click();
+        if (isImeComposing(event) || event.key !== 'Enter') return;
+        event.preventDefault();
+        root.querySelector('#wf-replace-add').click();
+    });
+    root.querySelector('#wf-group-name').addEventListener('keydown', event => {
+        if (isImeComposing(event) || event.key !== 'Enter') return;
+        event.preventDefault();
+        root.querySelector('#wf-group-add').click();
     });
 
     for (const id of ['wf-delete-search', 'wf-delete-filter']) root.querySelector(`#${id}`).addEventListener('input', () => renderDeleteRules(root));
@@ -1009,7 +1050,17 @@ function bindManager(root) {
         if (!file) return;
         try {
             const parsed = JSON.parse(await file.text());
-            settingsRef = migrateSettings(parsed.settings ?? parsed);
+            const imported = parsed?.format === 'word-filter-backup' ? parsed.settings : parsed;
+            const looksValid = imported && typeof imported === 'object'
+                && ['deleteRules', 'replaceRules', 'deleteList', 'replaceList'].some(key => Array.isArray(imported[key]));
+            if (!looksValid) throw new Error('Word Filter rules not found');
+            const preview = migrateSettings(imported);
+            const confirmed = await getContext().Popup.show.confirm(
+                'Word Filter 설정 가져오기',
+                `삭제 단어 ${preview.deleteRules.length}개, 치환 규칙 ${preview.replaceRules.length}개로 현재 설정을 교체합니다.`,
+            );
+            if (!confirmed) return;
+            settingsRef = preview;
             getContext().extensionSettings[EXTENSION_KEY] = settingsRef;
             saveSettings();
             rebuildProgram();
@@ -1046,6 +1097,7 @@ async function loadManagerTemplate(context) {
 function validateManagerRoot(root) {
     const requiredIds = [
         'wf-enabled',
+        'wf-protect-markup',
         'wf-delete-input',
         'wf-delete-add',
         'wf-replace-from',
@@ -1137,7 +1189,9 @@ function registerEvents() {
         if (!getSettings().enabled || !getSettings().persistToSource) return;
         const id = resolveMessageId(data, true);
         if (id === null || internalRenderIds.has(id)) return;
-        await applySourceMessage(id, { notify: true, save: false, rerender: false });
+        // Streamed replies are already on screen when MESSAGE_RECEIVED fires, so
+        // redraw them. Non-streamed replies have no element yet and are skipped.
+        await applySourceMessage(id, { notify: true, save: false, rerender: true });
     });
 
     bindEvent('CHARACTER_MESSAGE_RENDERED', data => {
@@ -1178,7 +1232,15 @@ function registerEvents() {
     bindEvent('MESSAGE_DELETED', refreshDisplayOnly);
 }
 
+function restoreAllDisplayMessages() {
+    for (const element of document.querySelectorAll('#chat .mes[data-word-filter-display-signature]')) {
+        const id = Number(element.getAttribute('mesid'));
+        if (Number.isInteger(id)) void restoreDisplayMessage(id).catch(() => {});
+    }
+}
+
 function cleanup() {
+    restoreAllDisplayMessages();
     queuedDisplayIds.clear();
     if (displayFrame !== null) cancelAnimationFrame(displayFrame);
     displayFrame = null;
@@ -1201,7 +1263,6 @@ async function initialize() {
     try {
         getSettings();
         rebuildProgram();
-        saveSettings();
         registerEvents();
         if (!addMenuButton()) {
             menuRetryTimer = setInterval(() => {

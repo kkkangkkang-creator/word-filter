@@ -1,10 +1,10 @@
-import { applyFilterProgram, createEmptyStats, mergeStats } from './filter-engine.js';
+import { applyFilterProgram, createEmptyStats, mergeStats } from './filter-engine.js?v=2.4.0';
 import {
     clearVariantBackup,
     getActiveSwipeIndex,
     resolveOriginalVariant,
     storeVariantBackup,
-} from './message-backup.js';
+} from './message-backup.js?v=2.4.0';
 
 export function getAllVariantKeys(message) {
     const keys = ['mes'];
